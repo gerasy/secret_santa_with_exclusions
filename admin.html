@@ -281,7 +281,10 @@
 
             btn.disabled = true;
             btn.innerHTML = '<span class="spinner"></span> Checking...';
-            const result = SecretSantaAlgorithm.checkSolvable(participants);
+
+            // Get participants WITH exclusions for algorithm (admin-only function)
+            const participantsWithExclusions = await db.getParticipantsForAssignment(adminToken);
+            const result = SecretSantaAlgorithm.checkSolvable(participantsWithExclusions);
 
             if (result.possible) {
                 btn.textContent = 'Assignment is possible!';
@@ -289,7 +292,7 @@
                 document.getElementById('runAssignmentBtn').disabled = false;
 
                 // Show stats
-                const stats = SecretSantaAlgorithm.getConstraintStats(participants);
+                const stats = SecretSantaAlgorithm.getConstraintStats(participantsWithExclusions);
                 console.log('Constraint stats:', stats);
             } else {
                 btn.textContent = 'Not Solvable - See Below';
@@ -333,9 +336,11 @@
             btn.innerHTML = '<span class="spinner"></span> Assigning...';
 
             try {
+                // Get participants WITH exclusions for algorithm (admin-only function)
+                const participantsWithExclusions = await db.getParticipantsForAssignment(adminToken);
 
                 // Generate assignment
-                const assignments = SecretSantaAlgorithm.generateAssignment(participants);
+                const assignments = SecretSantaAlgorithm.generateAssignment(participantsWithExclusions);
 
                 if (!assignments) {
                     alert('Could not generate assignment. Please check exclusions.');
@@ -344,11 +349,8 @@
                     return;
                 }
 
-                // Save assignments to database
-                await db.saveAssignments(assignments);
-
-                // Update group status
-                await db.markGroupAssigned(groupData.id);
+                // Save assignments to database (also marks group as assigned)
+                await db.saveAssignments(adminToken, assignments);
 
                 // Reload and display
                 await loadGroupData();

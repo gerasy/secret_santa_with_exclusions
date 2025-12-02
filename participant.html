@@ -281,11 +281,14 @@
         async function loadParticipantData() {
             try {
                 participantData = await db.getParticipantByToken(participantToken);
-                groupData = participantData.groups;
+                groupData = participantData.group;
                 maxExclusions = groupData.max_exclusions;
 
-                // Get all participants in the group
-                allParticipants = await db.getGroupParticipants(participantData.group_id);
+                // Other participants come from the secure RPC call (names only)
+                allParticipants = [
+                    { id: participantData.id, name: participantData.name },
+                    ...participantData.other_participants
+                ];
 
                 // Determine which view to show
                 determineView();

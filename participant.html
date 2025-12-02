@@ -169,6 +169,30 @@
                 </div>
             </div>
 
+            <!-- Exclusion choice state (ask if they want to exclude) -->
+            <div id="exclusionChoiceSection" class="hidden">
+                <div class="alert alert-info">
+                    <strong>Hi <span id="participantNameChoice"></span>!</strong><br>
+                    Would you like to exclude anyone from being matched with you?
+                </div>
+
+                <p class="text-center mb-3" style="color: var(--text-light);">
+                    This is completely optional. If there's someone you'd prefer not to give a gift to or receive from, you can exclude them.
+                </p>
+
+                <button class="btn btn-primary btn-block mb-2" onclick="showExclusionGrid()">
+                    Yes, I want to exclude someone
+                </button>
+
+                <button class="btn btn-secondary btn-block" onclick="submitNoExclusions()">
+                    No, I'm happy with anyone
+                </button>
+
+                <p class="help-text text-center mt-3">
+                    Your choice is private. No one else will know.
+                </p>
+            </div>
+
             <!-- Exclusion selection state -->
             <div id="exclusionSection" class="hidden">
                 <div class="alert alert-info">
@@ -303,6 +327,7 @@
         function hideAllSections() {
             document.getElementById('loadingSection').classList.add('hidden');
             document.getElementById('errorSection').classList.add('hidden');
+            document.getElementById('exclusionChoiceSection').classList.add('hidden');
             document.getElementById('exclusionSection').classList.add('hidden');
             document.getElementById('waitingSection').classList.add('hidden');
             document.getElementById('revealSection').classList.add('hidden');
@@ -333,8 +358,37 @@
                 // Already submitted, waiting for others
                 showWaitingSection();
             } else {
-                // Need to submit exclusions
-                showExclusionSection();
+                // Need to submit exclusions - show choice first
+                showExclusionChoiceSection();
+            }
+        }
+
+        // Show exclusion choice (first step)
+        function showExclusionChoiceSection() {
+            document.getElementById('exclusionChoiceSection').classList.remove('hidden');
+            document.getElementById('participantNameChoice').textContent = participantData.name;
+        }
+
+        // Show exclusion grid (when user chooses "Yes")
+        function showExclusionGrid() {
+            document.getElementById('exclusionChoiceSection').classList.add('hidden');
+            showExclusionSection();
+        }
+
+        // Submit with no exclusions (when user chooses "No")
+        async function submitNoExclusions() {
+            const btn = event.target;
+            btn.disabled = true;
+            btn.innerHTML = '<span class="spinner"></span> Submitting...';
+
+            try {
+                await db.submitExclusions(participantToken, []);
+                await loadParticipantData();
+            } catch (error) {
+                console.error('Error submitting:', error);
+                alert('Error submitting. Please try again.');
+                btn.disabled = false;
+                btn.textContent = "No, I'm happy with anyone";
             }
         }
 

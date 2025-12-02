@@ -296,9 +296,19 @@
             }
         }
 
+        // Hide all sections
+        function hideAllSections() {
+            document.getElementById('loadingSection').classList.add('hidden');
+            document.getElementById('errorSection').classList.add('hidden');
+            document.getElementById('exclusionSection').classList.add('hidden');
+            document.getElementById('waitingSection').classList.add('hidden');
+            document.getElementById('revealSection').classList.add('hidden');
+            document.getElementById('finalRevealSection').classList.add('hidden');
+        }
+
         // Determine which view to show based on state
         function determineView() {
-            document.getElementById('loadingSection').classList.add('hidden');
+            hideAllSections();
             document.getElementById('pageSubtitle').textContent = groupData.name;
 
             if (groupData.status === 'assigned') {

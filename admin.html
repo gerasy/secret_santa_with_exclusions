@@ -233,6 +233,7 @@
         function updateButtons() {
             const participants = groupData.participants || [];
             const allSubmitted = participants.every(p => p.has_submitted);
+            const submittedCount = participants.filter(p => p.has_submitted).length;
             const checkBtn = document.getElementById('checkSolvableBtn');
             const runBtn = document.getElementById('runAssignmentBtn');
             const actionButtons = document.getElementById('actionButtons');
@@ -245,13 +246,13 @@
                 actionButtons.classList.remove('hidden');
                 assignmentComplete.classList.add('hidden');
 
+                // Always allow checking/forcing, but show different text
                 if (allSubmitted) {
                     checkBtn.textContent = 'Check if Assignment is Possible';
-                    checkBtn.disabled = false;
                 } else {
-                    checkBtn.textContent = 'Waiting for all participants...';
-                    checkBtn.disabled = true;
+                    checkBtn.textContent = `Force Check (${submittedCount}/${participants.length} submitted)`;
                 }
+                checkBtn.disabled = false;
 
                 runBtn.disabled = true;
             }
@@ -260,13 +261,26 @@
         // Check if assignment is possible
         async function checkSolvable() {
             const btn = document.getElementById('checkSolvableBtn');
-            btn.disabled = true;
-            btn.innerHTML = '<span class="spinner"></span> Checking...';
 
-            // Reload latest data
+            // Reload latest data first
             await loadGroupData();
 
             const participants = groupData.participants || [];
+            const allSubmitted = participants.every(p => p.has_submitted);
+            const notSubmitted = participants.filter(p => !p.has_submitted).map(p => p.name);
+
+            // Warn if not all have submitted
+            if (!allSubmitted) {
+                const proceed = confirm(
+                    `Warning: ${notSubmitted.length} participant(s) haven't submitted yet:\n` +
+                    `- ${notSubmitted.join('\n- ')}\n\n` +
+                    `They will be treated as having no exclusions. Continue?`
+                );
+                if (!proceed) return;
+            }
+
+            btn.disabled = true;
+            btn.innerHTML = '<span class="spinner"></span> Checking...';
             const result = SecretSantaAlgorithm.checkSolvable(participants);
 
             if (result.possible) {
@@ -297,14 +311,28 @@
         // Run the assignment
         async function runAssignment() {
             const btn = document.getElementById('runAssignmentBtn');
+
+            // Reload latest data first
+            await loadGroupData();
+
+            const participants = groupData.participants || [];
+            const allSubmitted = participants.every(p => p.has_submitted);
+            const notSubmitted = participants.filter(p => !p.has_submitted).map(p => p.name);
+
+            // Final warning if not all have submitted
+            if (!allSubmitted) {
+                const proceed = confirm(
+                    `Final warning: ${notSubmitted.length} participant(s) haven't submitted:\n` +
+                    `- ${notSubmitted.join('\n- ')}\n\n` +
+                    `This cannot be undone. They will have no exclusions. Continue?`
+                );
+                if (!proceed) return;
+            }
+
             btn.disabled = true;
             btn.innerHTML = '<span class="spinner"></span> Assigning...';
 
             try {
-                // Reload latest data
-                await loadGroupData();
-
-                const participants = groupData.participants || [];
 
                 // Generate assignment
                 const assignments = SecretSantaAlgorithm.generateAssignment(participants);

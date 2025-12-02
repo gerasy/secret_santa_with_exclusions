@@ -357,9 +357,23 @@
             } else if (participantData.has_submitted) {
                 // Already submitted, waiting for others
                 showWaitingSection();
+            } else if (maxExclusions === 0) {
+                // Exclusions are off - auto-submit with none
+                autoSubmitNoExclusions();
             } else {
                 // Need to submit exclusions - show choice first
                 showExclusionChoiceSection();
+            }
+        }
+
+        // Auto-submit when exclusions are disabled
+        async function autoSubmitNoExclusions() {
+            try {
+                await db.submitExclusions(participantToken, []);
+                await loadParticipantData();
+            } catch (error) {
+                console.error('Error auto-submitting:', error);
+                showError('Could not register your participation. Please refresh and try again.');
             }
         }
 

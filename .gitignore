@@ -14,3 +14,7 @@ node_modules/
 # Local environment files
 .env
 .env.local
+
+# db pass
+credentials.txt
+

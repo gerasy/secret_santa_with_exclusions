@@ -1,0 +1,547 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Secret Santa - Your Assignment</title>
+    <link rel="stylesheet" href="css/style.css">
+    <style>
+        /* Additional styles for reveal animation */
+        .gift-icon {
+            font-size: 5rem;
+            margin-bottom: 1rem;
+            animation: bounce 1s ease infinite;
+        }
+
+        @keyframes bounce {
+            0%, 100% { transform: translateY(0); }
+            50% { transform: translateY(-10px); }
+        }
+
+        .confetti {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            overflow: hidden;
+            z-index: 100;
+        }
+
+        .confetti-piece {
+            position: absolute;
+            width: 10px;
+            height: 10px;
+            top: -10px;
+            animation: confetti-fall 3s ease-out forwards;
+        }
+
+        @keyframes confetti-fall {
+            0% {
+                transform: translateY(0) rotate(0deg);
+                opacity: 1;
+            }
+            100% {
+                transform: translateY(100vh) rotate(720deg);
+                opacity: 0;
+            }
+        }
+
+        .slot-machine {
+            background: linear-gradient(180deg, #1a1a2e 0%, #2d2d44 50%, #1a1a2e 100%);
+            border-radius: 16px;
+            padding: 2rem;
+            margin: 2rem 0;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .slot-machine::before,
+        .slot-machine::after {
+            content: '';
+            position: absolute;
+            left: 0;
+            right: 0;
+            height: 30px;
+            z-index: 10;
+        }
+
+        .slot-machine::before {
+            top: 0;
+            background: linear-gradient(180deg, #1a1a2e, transparent);
+        }
+
+        .slot-machine::after {
+            bottom: 0;
+            background: linear-gradient(0deg, #1a1a2e, transparent);
+        }
+
+        .slot-window {
+            height: 80px;
+            overflow: hidden;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .slot-reel {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        .slot-reel.spinning .slot-name {
+            animation: slot-scroll 0.15s linear infinite;
+        }
+
+        .slot-name {
+            font-size: 2rem;
+            font-weight: 700;
+            color: white;
+            padding: 1rem;
+            white-space: nowrap;
+        }
+
+        @keyframes slot-scroll {
+            0% { transform: translateY(100%); opacity: 0; }
+            25% { opacity: 1; }
+            75% { opacity: 1; }
+            100% { transform: translateY(-100%); opacity: 0; }
+        }
+
+        .final-reveal {
+            text-align: center;
+            padding: 2rem;
+        }
+
+        .final-reveal .gift-emoji {
+            font-size: 4rem;
+            animation: pop-in 0.5s ease-out;
+        }
+
+        .final-reveal .assigned-name {
+            font-size: 3rem;
+            font-weight: 700;
+            color: var(--secondary);
+            margin: 1rem 0;
+            animation: pop-in 0.5s ease-out 0.2s both;
+        }
+
+        .final-reveal .message {
+            font-size: 1.25rem;
+            color: var(--text-light);
+            animation: fade-in 0.5s ease-out 0.4s both;
+        }
+
+        @keyframes fade-in {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+    </style>
+</head>
+<body>
+    <!-- Snowfall effect -->
+    <div class="snowflakes" id="snowflakes"></div>
+
+    <!-- Confetti (hidden until reveal) -->
+    <div class="confetti" id="confetti"></div>
+
+    <div class="container">
+        <div class="card">
+            <div class="card-header">
+                <h1 id="pageTitle">Secret Santa</h1>
+                <p id="pageSubtitle">Loading...</p>
+            </div>
+
+            <!-- Error state -->
+            <div id="errorSection" class="hidden">
+                <div class="alert alert-danger">
+                    <strong>Error:</strong> <span id="errorMessage"></span>
+                </div>
+            </div>
+
+            <!-- Loading state -->
+            <div id="loadingSection">
+                <div class="text-center">
+                    <div class="spinner" style="width: 40px; height: 40px; border-width: 3px; border-color: var(--primary); border-top-color: transparent;"></div>
+                    <p class="mt-2">Loading...</p>
+                </div>
+            </div>
+
+            <!-- Exclusion selection state -->
+            <div id="exclusionSection" class="hidden">
+                <div class="alert alert-info">
+                    <strong>Hi <span id="participantName"></span>!</strong><br>
+                    Select the people you <strong>don't</strong> want to be matched with (either as giver or receiver).
+                </div>
+
+                <div class="exclusion-count" id="exclusionCount">
+                    Selected: 0 / <span id="maxExclusions">2</span>
+                </div>
+
+                <div class="exclusion-grid" id="exclusionGrid"></div>
+
+                <button class="btn btn-primary btn-block" id="submitBtn" onclick="submitExclusions()">
+                    Submit My Preferences
+                </button>
+
+                <p class="help-text text-center mt-2">
+                    Your selections are private. No one else will see who you excluded.
+                </p>
+            </div>
+
+            <!-- Waiting state (after submission, before assignment) -->
+            <div id="waitingSection" class="hidden">
+                <div class="text-center">
+                    <div class="gift-icon">🎁</div>
+                    <h2>Preferences Submitted!</h2>
+                    <p class="mt-2">Waiting for all participants to submit their preferences...</p>
+                    <p class="help-text mt-2">Come back later to see your assignment!</p>
+                </div>
+            </div>
+
+            <!-- Reveal animation state -->
+            <div id="revealSection" class="hidden">
+                <div class="text-center">
+                    <p class="reveal-message">Finding your Secret Santa match...</p>
+
+                    <div class="slot-machine">
+                        <div class="slot-window">
+                            <div class="slot-reel" id="slotReel">
+                                <div class="slot-name" id="slotName">?</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <button class="btn btn-primary btn-block" id="revealBtn" onclick="startReveal()">
+                        Reveal My Match!
+                    </button>
+                </div>
+            </div>
+
+            <!-- Final reveal state -->
+            <div id="finalRevealSection" class="hidden">
+                <div class="final-reveal">
+                    <div class="gift-emoji">🎁</div>
+                    <p class="message">You are the Secret Santa for...</p>
+                    <div class="assigned-name" id="assignedName"></div>
+                    <p class="message mt-3">Time to find the perfect gift!</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Supabase CDN -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="js/supabase-client.js"></script>
+    <script>
+        let participantData = null;
+        let groupData = null;
+        let participantToken = null;
+        let maxExclusions = 2;
+        let allParticipants = [];
+        let selectedExclusions = [];
+
+        // Initialize
+        document.addEventListener('DOMContentLoaded', async () => {
+            initSupabase();
+            createSnowflakes();
+
+            // Get token from URL
+            const urlParams = new URLSearchParams(window.location.search);
+            participantToken = urlParams.get('token');
+
+            if (!participantToken) {
+                showError('No participant token provided. Please use the link you received.');
+                return;
+            }
+
+            await loadParticipantData();
+        });
+
+        // Snowflake animation
+        function createSnowflakes() {
+            const container = document.getElementById('snowflakes');
+            const flakes = ['❄', '❅', '❆', '✻', '✼'];
+
+            for (let i = 0; i < 50; i++) {
+                const flake = document.createElement('div');
+                flake.className = 'snowflake';
+                flake.textContent = flakes[Math.floor(Math.random() * flakes.length)];
+                flake.style.left = Math.random() * 100 + '%';
+                flake.style.animationDuration = (Math.random() * 3 + 5) + 's';
+                flake.style.animationDelay = Math.random() * 5 + 's';
+                flake.style.fontSize = (Math.random() * 1 + 0.5) + 'rem';
+                container.appendChild(flake);
+            }
+        }
+
+        // Load participant data
+        async function loadParticipantData() {
+            try {
+                participantData = await db.getParticipantByToken(participantToken);
+                groupData = participantData.groups;
+                maxExclusions = groupData.max_exclusions;
+
+                // Get all participants in the group
+                allParticipants = await db.getGroupParticipants(participantData.group_id);
+
+                // Determine which view to show
+                determineView();
+
+            } catch (error) {
+                console.error('Error loading participant:', error);
+                showError('Could not load your data. Please check your link.');
+            }
+        }
+
+        // Determine which view to show based on state
+        function determineView() {
+            document.getElementById('loadingSection').classList.add('hidden');
+            document.getElementById('pageSubtitle').textContent = groupData.name;
+
+            if (groupData.status === 'assigned') {
+                // Assignments are done
+                if (participantData.assigned_to) {
+                    // Check if this is first visit (show animation) or return visit (show result directly)
+                    const revealedKey = `revealed_${participantToken}`;
+                    if (localStorage.getItem(revealedKey)) {
+                        // Already revealed, show final result
+                        showFinalReveal(participantData.assigned_to);
+                    } else {
+                        // First time, show reveal animation
+                        showRevealSection();
+                    }
+                } else {
+                    showError('Something went wrong with assignments. Please contact the organizer.');
+                }
+            } else if (participantData.has_submitted) {
+                // Already submitted, waiting for others
+                showWaitingSection();
+            } else {
+                // Need to submit exclusions
+                showExclusionSection();
+            }
+        }
+
+        // Show exclusion selection
+        function showExclusionSection() {
+            document.getElementById('exclusionSection').classList.remove('hidden');
+            document.getElementById('participantName').textContent = participantData.name;
+            document.getElementById('maxExclusions').textContent = maxExclusions;
+
+            // Populate grid with other participants
+            const grid = document.getElementById('exclusionGrid');
+            grid.innerHTML = '';
+
+            allParticipants
+                .filter(p => p.id !== participantData.id)
+                .forEach(p => {
+                    const option = document.createElement('div');
+                    option.className = 'exclusion-option';
+                    option.innerHTML = `
+                        <input type="checkbox" id="exclude_${p.id}" value="${p.name}" onchange="updateExclusions()">
+                        <label for="exclude_${p.id}">${p.name}</label>
+                    `;
+                    grid.appendChild(option);
+                });
+
+            // Pre-select any existing exclusions
+            if (participantData.exclusions && participantData.exclusions.length > 0) {
+                selectedExclusions = [...participantData.exclusions];
+                selectedExclusions.forEach(name => {
+                    const checkbox = document.querySelector(`input[value="${name}"]`);
+                    if (checkbox) checkbox.checked = true;
+                });
+                updateExclusionCount();
+            }
+        }
+
+        // Update exclusions on checkbox change
+        function updateExclusions() {
+            const checkboxes = document.querySelectorAll('.exclusion-grid input[type="checkbox"]');
+            selectedExclusions = [];
+
+            checkboxes.forEach(cb => {
+                if (cb.checked) {
+                    selectedExclusions.push(cb.value);
+                }
+            });
+
+            // Enforce max exclusions
+            if (selectedExclusions.length > maxExclusions) {
+                // Uncheck the last one
+                const lastChecked = Array.from(checkboxes).find(cb =>
+                    cb.checked && cb.value === selectedExclusions[selectedExclusions.length - 1]
+                );
+                if (lastChecked) {
+                    lastChecked.checked = false;
+                    selectedExclusions.pop();
+                }
+            }
+
+            updateExclusionCount();
+        }
+
+        function updateExclusionCount() {
+            const countDiv = document.getElementById('exclusionCount');
+            countDiv.textContent = `Selected: ${selectedExclusions.length} / ${maxExclusions}`;
+
+            if (selectedExclusions.length >= maxExclusions) {
+                countDiv.classList.add('warning');
+                countDiv.classList.remove('error');
+            } else {
+                countDiv.classList.remove('warning', 'error');
+            }
+        }
+
+        // Submit exclusions
+        async function submitExclusions() {
+            const btn = document.getElementById('submitBtn');
+            btn.disabled = true;
+            btn.innerHTML = '<span class="spinner"></span> Submitting...';
+
+            try {
+                await db.submitExclusions(participantToken, selectedExclusions);
+
+                // Reload data and show waiting
+                await loadParticipantData();
+
+            } catch (error) {
+                console.error('Error submitting exclusions:', error);
+                alert('Error submitting preferences. Please try again.');
+                btn.disabled = false;
+                btn.textContent = 'Submit My Preferences';
+            }
+        }
+
+        // Show waiting section
+        function showWaitingSection() {
+            document.getElementById('waitingSection').classList.remove('hidden');
+        }
+
+        // Show reveal section
+        function showRevealSection() {
+            document.getElementById('revealSection').classList.remove('hidden');
+        }
+
+        // Start reveal animation
+        function startReveal() {
+            const btn = document.getElementById('revealBtn');
+            btn.disabled = true;
+            btn.classList.add('hidden');
+
+            const reel = document.getElementById('slotReel');
+            const nameEl = document.getElementById('slotName');
+
+            // Get names to shuffle through
+            const otherNames = allParticipants
+                .filter(p => p.id !== participantData.id)
+                .map(p => p.name);
+
+            // Add the assigned name for the final reveal
+            const assignedName = participantData.assigned_to;
+
+            // Start spinning
+            reel.classList.add('spinning');
+
+            let spinCount = 0;
+            const maxSpins = 30; // Number of names to show before final
+            const spinInterval = setInterval(() => {
+                // Show random name
+                const randomName = otherNames[Math.floor(Math.random() * otherNames.length)];
+                nameEl.textContent = randomName;
+                spinCount++;
+
+                // Slow down towards the end
+                if (spinCount > maxSpins - 10) {
+                    clearInterval(spinInterval);
+                    slowDownAndReveal(nameEl, otherNames, assignedName);
+                }
+            }, 100);
+        }
+
+        function slowDownAndReveal(nameEl, otherNames, assignedName) {
+            let delay = 150;
+            let count = 0;
+            const maxCount = 10;
+
+            function showNext() {
+                if (count < maxCount) {
+                    const randomName = otherNames[Math.floor(Math.random() * otherNames.length)];
+                    nameEl.textContent = randomName;
+                    count++;
+                    delay += 50; // Slow down
+                    setTimeout(showNext, delay);
+                } else {
+                    // Final reveal
+                    document.getElementById('slotReel').classList.remove('spinning');
+                    nameEl.textContent = assignedName;
+
+                    // Store that we've revealed
+                    localStorage.setItem(`revealed_${participantToken}`, 'true');
+
+                    // After a moment, show final section
+                    setTimeout(() => {
+                        showFinalReveal(assignedName);
+                    }, 1000);
+                }
+            }
+
+            showNext();
+        }
+
+        // Show final reveal
+        function showFinalReveal(assignedName) {
+            document.getElementById('revealSection').classList.add('hidden');
+            document.getElementById('finalRevealSection').classList.remove('hidden');
+            document.getElementById('assignedName').textContent = assignedName;
+
+            // Trigger confetti
+            createConfetti();
+        }
+
+        // Create confetti effect
+        function createConfetti() {
+            const container = document.getElementById('confetti');
+            const colors = ['#c41e3a', '#228b22', '#ffd700', '#ff6b6b', '#4ecdc4', '#ffe66d'];
+
+            for (let i = 0; i < 100; i++) {
+                const piece = document.createElement('div');
+                piece.className = 'confetti-piece';
+                piece.style.left = Math.random() * 100 + '%';
+                piece.style.backgroundColor = colors[Math.floor(Math.random() * colors.length)];
+                piece.style.animationDelay = Math.random() * 2 + 's';
+                piece.style.transform = `rotate(${Math.random() * 360}deg)`;
+
+                // Random shapes
+                if (Math.random() > 0.5) {
+                    piece.style.borderRadius = '50%';
+                }
+
+                container.appendChild(piece);
+            }
+
+            // Remove confetti after animation
+            setTimeout(() => {
+                container.innerHTML = '';
+            }, 5000);
+        }
+
+        // Utility functions
+        function showError(message) {
+            document.getElementById('loadingSection').classList.add('hidden');
+            document.getElementById('errorSection').classList.remove('hidden');
+            document.getElementById('errorMessage').textContent = message;
+        }
+
+        // Auto-refresh while waiting
+        setInterval(async () => {
+            if (participantData && participantData.has_submitted && groupData.status !== 'assigned') {
+                await loadParticipantData();
+            }
+        }, 15000);
+    </script>
+</body>
+</html>

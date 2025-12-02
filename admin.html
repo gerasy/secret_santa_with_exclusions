@@ -1,0 +1,359 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Secret Santa - Admin Dashboard</title>
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+    <!-- Snowfall effect -->
+    <div class="snowflakes" id="snowflakes"></div>
+
+    <div class="container">
+        <div class="card">
+            <div class="card-header">
+                <h1 id="groupTitle">Loading...</h1>
+                <p>Admin Dashboard</p>
+            </div>
+
+            <!-- Error state -->
+            <div id="errorSection" class="hidden">
+                <div class="alert alert-danger">
+                    <strong>Error:</strong> <span id="errorMessage"></span>
+                </div>
+                <a href="index.html" class="btn btn-primary btn-block">Create New Group</a>
+            </div>
+
+            <!-- Loading state -->
+            <div id="loadingSection">
+                <div class="text-center">
+                    <div class="spinner" style="width: 40px; height: 40px; border-width: 3px; border-color: var(--primary); border-top-color: transparent;"></div>
+                    <p class="mt-2">Loading group data...</p>
+                </div>
+            </div>
+
+            <!-- Main content -->
+            <div id="mainContent" class="hidden">
+                <!-- Status banner -->
+                <div id="statusBanner" class="alert"></div>
+
+                <!-- Progress -->
+                <div class="mb-3">
+                    <div class="progress-bar">
+                        <div class="progress-fill" id="progressFill" style="width: 0%"></div>
+                    </div>
+                    <p class="text-center" id="progressText">0 of 0 participants have submitted preferences</p>
+                </div>
+
+                <!-- Participant list -->
+                <h3 class="mb-2">Participants</h3>
+                <ul class="participant-list" id="participantList"></ul>
+
+                <!-- Action buttons -->
+                <div id="actionButtons" class="mt-3">
+                    <!-- Check solvability button -->
+                    <button class="btn btn-secondary btn-block mb-2" id="checkSolvableBtn" onclick="checkSolvable()">
+                        Check if Assignment is Possible
+                    </button>
+
+                    <!-- Run assignment button -->
+                    <button class="btn btn-primary btn-block" id="runAssignmentBtn" onclick="runAssignment()" disabled>
+                        Run Secret Santa Assignment
+                    </button>
+                </div>
+
+                <!-- Assignment complete section -->
+                <div id="assignmentComplete" class="hidden">
+                    <div class="alert alert-success">
+                        <strong>Assignments Complete!</strong><br>
+                        All participants can now visit their links to see who they're gifting to.
+                    </div>
+                </div>
+
+                <!-- Links section -->
+                <div class="links-section mt-3">
+                    <h3 class="mb-2">Participant Links</h3>
+                    <p class="help-text mb-2">Share these links with participants who haven't received them yet.</p>
+                    <div id="participantLinks"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Supabase CDN -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="js/supabase-client.js"></script>
+    <script src="js/algorithm.js"></script>
+    <script>
+        let groupData = null;
+        let adminToken = null;
+
+        // Initialize
+        document.addEventListener('DOMContentLoaded', async () => {
+            initSupabase();
+            createSnowflakes();
+
+            // Get token from URL
+            const urlParams = new URLSearchParams(window.location.search);
+            adminToken = urlParams.get('token');
+
+            if (!adminToken) {
+                showError('No admin token provided. Please use the link from when you created the group.');
+                return;
+            }
+
+            await loadGroupData();
+        });
+
+        // Snowflake animation
+        function createSnowflakes() {
+            const container = document.getElementById('snowflakes');
+            const flakes = ['❄', '❅', '❆', '✻', '✼'];
+
+            for (let i = 0; i < 50; i++) {
+                const flake = document.createElement('div');
+                flake.className = 'snowflake';
+                flake.textContent = flakes[Math.floor(Math.random() * flakes.length)];
+                flake.style.left = Math.random() * 100 + '%';
+                flake.style.animationDuration = (Math.random() * 3 + 5) + 's';
+                flake.style.animationDelay = Math.random() * 5 + 's';
+                flake.style.fontSize = (Math.random() * 1 + 0.5) + 'rem';
+                container.appendChild(flake);
+            }
+        }
+
+        // Load group data
+        async function loadGroupData() {
+            try {
+                groupData = await db.getGroupByAdminToken(adminToken);
+                displayGroupData();
+            } catch (error) {
+                console.error('Error loading group:', error);
+                showError('Could not load group. Please check your link.');
+            }
+        }
+
+        // Display group data
+        function displayGroupData() {
+            document.getElementById('loadingSection').classList.add('hidden');
+            document.getElementById('mainContent').classList.remove('hidden');
+
+            // Set title
+            document.getElementById('groupTitle').textContent = groupData.name;
+
+            // Update status banner
+            updateStatusBanner();
+
+            // Update progress
+            updateProgress();
+
+            // Display participants
+            displayParticipants();
+
+            // Display links
+            displayLinks();
+
+            // Update buttons based on status
+            updateButtons();
+        }
+
+        function updateStatusBanner() {
+            const banner = document.getElementById('statusBanner');
+            const status = groupData.status;
+
+            if (status === 'collecting') {
+                banner.className = 'alert alert-info';
+                banner.innerHTML = '<strong>Collecting Preferences</strong> - Waiting for all participants to submit their exclusions.';
+            } else if (status === 'ready') {
+                banner.className = 'alert alert-warning';
+                banner.innerHTML = '<strong>Ready to Assign</strong> - All participants have submitted. You can now run the assignment.';
+            } else if (status === 'assigned') {
+                banner.className = 'alert alert-success';
+                banner.innerHTML = '<strong>Assignments Complete</strong> - Everyone can now see who they\'re gifting to!';
+            }
+        }
+
+        function updateProgress() {
+            const participants = groupData.participants || [];
+            const total = participants.length;
+            const submitted = participants.filter(p => p.has_submitted).length;
+            const percentage = total > 0 ? (submitted / total) * 100 : 0;
+
+            document.getElementById('progressFill').style.width = percentage + '%';
+            document.getElementById('progressText').textContent =
+                `${submitted} of ${total} participants have submitted preferences`;
+        }
+
+        function displayParticipants() {
+            const list = document.getElementById('participantList');
+            list.innerHTML = '';
+
+            const participants = groupData.participants || [];
+            participants.forEach(p => {
+                const li = document.createElement('li');
+                li.className = `participant-item ${p.has_submitted ? 'submitted' : 'pending'}`;
+
+                let statusHtml = '';
+                if (groupData.status === 'assigned') {
+                    statusHtml = `<span class="participant-status status-submitted">Assigned</span>`;
+                } else {
+                    statusHtml = p.has_submitted
+                        ? `<span class="participant-status status-submitted">Submitted</span>`
+                        : `<span class="participant-status status-pending">Waiting</span>`;
+                }
+
+                li.innerHTML = `
+                    <span class="participant-name">${p.name}</span>
+                    ${statusHtml}
+                `;
+                list.appendChild(li);
+            });
+        }
+
+        function displayLinks() {
+            const container = document.getElementById('participantLinks');
+            container.innerHTML = '';
+
+            const baseUrl = window.location.origin + window.location.pathname.replace('admin.html', '');
+            const participants = groupData.participants || [];
+
+            participants.forEach(p => {
+                const participantUrl = `${baseUrl}participant.html?token=${p.participant_token}`;
+                const linkItem = document.createElement('div');
+                linkItem.className = 'link-item';
+                linkItem.innerHTML = `
+                    <span><strong>${p.name}:</strong> <span class="link-url" style="font-size: 0.75rem;">${participantUrl}</span></span>
+                    <button class="btn btn-secondary btn-copy" onclick="copyToClipboard('${participantUrl}', this)">Copy</button>
+                `;
+                container.appendChild(linkItem);
+            });
+        }
+
+        function updateButtons() {
+            const participants = groupData.participants || [];
+            const allSubmitted = participants.every(p => p.has_submitted);
+            const checkBtn = document.getElementById('checkSolvableBtn');
+            const runBtn = document.getElementById('runAssignmentBtn');
+            const actionButtons = document.getElementById('actionButtons');
+            const assignmentComplete = document.getElementById('assignmentComplete');
+
+            if (groupData.status === 'assigned') {
+                actionButtons.classList.add('hidden');
+                assignmentComplete.classList.remove('hidden');
+            } else {
+                actionButtons.classList.remove('hidden');
+                assignmentComplete.classList.add('hidden');
+
+                if (allSubmitted) {
+                    checkBtn.textContent = 'Check if Assignment is Possible';
+                    checkBtn.disabled = false;
+                } else {
+                    checkBtn.textContent = 'Waiting for all participants...';
+                    checkBtn.disabled = true;
+                }
+
+                runBtn.disabled = true;
+            }
+        }
+
+        // Check if assignment is possible
+        async function checkSolvable() {
+            const btn = document.getElementById('checkSolvableBtn');
+            btn.disabled = true;
+            btn.innerHTML = '<span class="spinner"></span> Checking...';
+
+            // Reload latest data
+            await loadGroupData();
+
+            const participants = groupData.participants || [];
+            const result = SecretSantaAlgorithm.checkSolvable(participants);
+
+            if (result.possible) {
+                btn.textContent = 'Assignment is possible!';
+                btn.className = 'btn btn-secondary btn-block mb-2';
+                document.getElementById('runAssignmentBtn').disabled = false;
+
+                // Show stats
+                const stats = SecretSantaAlgorithm.getConstraintStats(participants);
+                console.log('Constraint stats:', stats);
+            } else {
+                btn.textContent = 'Not Solvable - See Below';
+                btn.className = 'btn btn-secondary btn-block mb-2';
+
+                // Show reason
+                const statusBanner = document.getElementById('statusBanner');
+                statusBanner.className = 'alert alert-danger';
+                statusBanner.innerHTML = `<strong>Cannot Assign:</strong> ${result.reason}<br><br>
+                    Some participants need to remove exclusions for the assignment to work.`;
+            }
+
+            setTimeout(() => {
+                btn.textContent = 'Check if Assignment is Possible';
+                btn.disabled = false;
+            }, 3000);
+        }
+
+        // Run the assignment
+        async function runAssignment() {
+            const btn = document.getElementById('runAssignmentBtn');
+            btn.disabled = true;
+            btn.innerHTML = '<span class="spinner"></span> Assigning...';
+
+            try {
+                // Reload latest data
+                await loadGroupData();
+
+                const participants = groupData.participants || [];
+
+                // Generate assignment
+                const assignments = SecretSantaAlgorithm.generateAssignment(participants);
+
+                if (!assignments) {
+                    alert('Could not generate assignment. Please check exclusions.');
+                    btn.disabled = false;
+                    btn.textContent = 'Run Secret Santa Assignment';
+                    return;
+                }
+
+                // Save assignments to database
+                await db.saveAssignments(assignments);
+
+                // Update group status
+                await db.markGroupAssigned(groupData.id);
+
+                // Reload and display
+                await loadGroupData();
+
+            } catch (error) {
+                console.error('Error running assignment:', error);
+                alert('Error saving assignments. Please try again.');
+                btn.disabled = false;
+                btn.textContent = 'Run Secret Santa Assignment';
+            }
+        }
+
+        // Utility functions
+        function showError(message) {
+            document.getElementById('loadingSection').classList.add('hidden');
+            document.getElementById('errorSection').classList.remove('hidden');
+            document.getElementById('errorMessage').textContent = message;
+        }
+
+        function copyToClipboard(text, btn) {
+            navigator.clipboard.writeText(text).then(() => {
+                const originalText = btn.textContent;
+                btn.textContent = 'Copied!';
+                setTimeout(() => btn.textContent = originalText, 1500);
+            });
+        }
+
+        // Auto-refresh every 30 seconds
+        setInterval(async () => {
+            if (groupData && groupData.status !== 'assigned') {
+                await loadGroupData();
+            }
+        }, 30000);
+    </script>
+</body>
+</html>

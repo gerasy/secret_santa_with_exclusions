@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Secret Santa - Create Group</title>
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+    <!-- Snowfall effect -->
+    <div class="snowflakes" id="snowflakes"></div>
+
+    <div class="container">
+        <div class="card">
+            <div class="card-header">
+                <h1>Secret Santa</h1>
+                <p>Create a gift exchange with private exclusions</p>
+            </div>
+
+            <form id="createGroupForm">
+                <div class="form-group">
+                    <label for="groupName">Group Name</label>
+                    <input type="text" id="groupName" placeholder="e.g., Office Holiday 2024" required>
+                </div>
+
+                <div class="form-group">
+                    <label for="participants">Participants (one name per line)</label>
+                    <textarea id="participants" placeholder="Alice&#10;Bob&#10;Charlie&#10;Diana&#10;..." required></textarea>
+                    <p class="help-text">Enter at least 3 names, one per line</p>
+                </div>
+
+                <div class="form-group">
+                    <label for="maxExclusions">Maximum Exclusions Per Person</label>
+                    <input type="number" id="maxExclusions" value="2" min="0" max="5">
+                    <p class="help-text">How many people each participant can exclude (recommended: 1-2)</p>
+                </div>
+
+                <button type="submit" class="btn btn-primary btn-block" id="createBtn">
+                    Create Secret Santa Group
+                </button>
+            </form>
+
+            <!-- Success section (hidden by default) -->
+            <div id="successSection" class="hidden">
+                <div class="alert alert-success">
+                    <strong>Group created successfully!</strong>
+                    Share the participant links below.
+                </div>
+
+                <div class="links-section">
+                    <h3 class="mb-2">Admin Link (save this!)</h3>
+                    <div class="link-item">
+                        <span class="link-url" id="adminLink"></span>
+                        <button class="btn btn-secondary btn-copy" onclick="copyLink('adminLink')">Copy</button>
+                    </div>
+
+                    <h3 class="mt-3 mb-2">Participant Links</h3>
+                    <p class="help-text mb-2">Send each person their unique link. They'll use it to set exclusions and see their assignment.</p>
+                    <div id="participantLinks"></div>
+                </div>
+
+                <button class="btn btn-primary btn-block mt-3" onclick="goToAdmin()">
+                    Go to Admin Dashboard
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Supabase CDN -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="js/supabase-client.js"></script>
+    <script>
+        // Initialize
+        document.addEventListener('DOMContentLoaded', () => {
+            initSupabase();
+            createSnowflakes();
+        });
+
+        // Snowflake animation
+        function createSnowflakes() {
+            const container = document.getElementById('snowflakes');
+            const flakes = ['❄', '❅', '❆', '✻', '✼'];
+
+            for (let i = 0; i < 50; i++) {
+                const flake = document.createElement('div');
+                flake.className = 'snowflake';
+                flake.textContent = flakes[Math.floor(Math.random() * flakes.length)];
+                flake.style.left = Math.random() * 100 + '%';
+                flake.style.animationDuration = (Math.random() * 3 + 5) + 's';
+                flake.style.animationDelay = Math.random() * 5 + 's';
+                flake.style.fontSize = (Math.random() * 1 + 0.5) + 'rem';
+                container.appendChild(flake);
+            }
+        }
+
+        // Form submission
+        document.getElementById('createGroupForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+
+            const btn = document.getElementById('createBtn');
+            btn.disabled = true;
+            btn.innerHTML = '<span class="spinner"></span> Creating...';
+
+            try {
+                const groupName = document.getElementById('groupName').value.trim();
+                const participantsText = document.getElementById('participants').value;
+                const maxExclusions = parseInt(document.getElementById('maxExclusions').value) || 2;
+
+                // Parse participant names
+                const names = participantsText
+                    .split('\n')
+                    .map(n => n.trim())
+                    .filter(n => n.length > 0);
+
+                if (names.length < 3) {
+                    alert('Please enter at least 3 participants');
+                    btn.disabled = false;
+                    btn.textContent = 'Create Secret Santa Group';
+                    return;
+                }
+
+                // Check for duplicates
+                const uniqueNames = new Set(names);
+                if (uniqueNames.size !== names.length) {
+                    alert('Please remove duplicate names');
+                    btn.disabled = false;
+                    btn.textContent = 'Create Secret Santa Group';
+                    return;
+                }
+
+                // Create group
+                const result = await db.createGroup(groupName, names, maxExclusions);
+
+                // Show success section
+                document.getElementById('createGroupForm').classList.add('hidden');
+                document.getElementById('successSection').classList.remove('hidden');
+
+                // Set admin link
+                const baseUrl = window.location.origin + window.location.pathname.replace('index.html', '');
+                const adminUrl = `${baseUrl}admin.html?token=${result.group.admin_token}`;
+                document.getElementById('adminLink').textContent = adminUrl;
+
+                // Set participant links
+                const linksContainer = document.getElementById('participantLinks');
+                result.participants.forEach(p => {
+                    const participantUrl = `${baseUrl}participant.html?token=${p.participant_token}`;
+                    const linkItem = document.createElement('div');
+                    linkItem.className = 'link-item';
+                    linkItem.innerHTML = `
+                        <span><strong>${p.name}:</strong> <span class="link-url">${participantUrl}</span></span>
+                        <button class="btn btn-secondary btn-copy" onclick="copyToClipboard('${participantUrl}')">Copy</button>
+                    `;
+                    linksContainer.appendChild(linkItem);
+                });
+
+                // Store admin token for redirect
+                localStorage.setItem('adminToken', result.group.admin_token);
+
+            } catch (error) {
+                console.error('Error creating group:', error);
+                alert('Error creating group. Please check your Supabase configuration.');
+                btn.disabled = false;
+                btn.textContent = 'Create Secret Santa Group';
+            }
+        });
+
+        // Copy functions
+        function copyLink(elementId) {
+            const text = document.getElementById(elementId).textContent;
+            copyToClipboard(text);
+        }
+
+        function copyToClipboard(text) {
+            navigator.clipboard.writeText(text).then(() => {
+                // Brief feedback
+                const btn = event.target;
+                const originalText = btn.textContent;
+                btn.textContent = 'Copied!';
+                setTimeout(() => btn.textContent = originalText, 1500);
+            });
+        }
+
+        function goToAdmin() {
+            const token = localStorage.getItem('adminToken');
+            if (token) {
+                window.location.href = `admin.html?token=${token}`;
+            }
+        }
+    </script>
+</body>
+</html>
